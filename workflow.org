@@ -1,0 +1,654 @@
+
+* Prepare the 16S data
+
+Download the fastq files, stored here in three zip archives: https://drive.google.com/drive/folders/0B5wF0CrINC0YNmZ5NEhWSFJWcHc
+
+Additionally check the annotation files from Yaohui Bai on an email on July 19 and August 8 2017, and Francis Burdon on Aug 10 2017.
+
+#+BEGIN_SRC sh
+
+cp -R MJ12214056483-$'\342'$'\210'$'\236'$'\303'$'\277'$'\342'$'\200'$'\234'$'\302'$'\264'$'\302'$'\252'$'\342'$'\200'$'\230'-$'\342'$'\210'$'\202'$'\342'$'\200'$'\241'$'\342'$'\200'$'\224'$'\313'$'\230'$'\342'$'\200'$'\223'$'\342'$'\200'$'\230'-$'\302'$'\240'$'\313'$'\235'$'\303'$'\246'$'\342'$'\200'$'\272'-20140625/515F_907R/valid .
+
+awk '{print $1}' valid/valid.MJ12214056483.515F_907R.fq | \
+    awk -F'_' '{if ((NR - 1) % 4 == 0) {print $0 ";sample=S" substr($1, 2)} else {print $0}}' > \
+    valid_copy.fq
+
+usearch -fastq_filter valid_copy.fq -fastq_maxee 1.0 -relabel Filt -fastaout filtered.fa
+usearch -fastx_uniques filtered.fa -relabel Uniq -sizeout -fastaout uniques.fa
+usearch -cluster_otus uniques.fa -minsize 2 -otus otus.fa -relabel Otu
+usearch -usearch_global valid_copy.fq -db otus.fa -strand plus -id 0.97 -otutabout otutab.txt -biomout otutab.json
+
+wget https://www.drive5.com/sintax/rdp_16s_v16.fa.gz
+usearch -makeudb_usearch rdp_16s_v16.fa -output rdp_16s.udb
+usearch -sintax otus.fa -db rdp_16s.udb -tabbedout reads.sintax -strand both -sintax_cutoff 0.8
+
+wget http://greengenes.lbl.gov/Download/Sequence_Data/Fasta_data_files/core_set_aligned.fasta
+pynast -i otus.fa -t core_set_aligned.fasta
+
+
+#+END_SRC
+
+
+Use the following outgroup:
+#+BEGIN_SRC sh :noweb-ref outgroup
+>JQ837894.1.1415 Archaea;Euryarchaeota;Methanomicrobia;Methanomicrobiales;Methanocorpusculaceae;Methanocalculus;Methanocalculus sp. AMF-B2M
+CTCCGGAGGCTATTGCTATCAGGGTTTGACTAAGCCATGCGAGTCGAGAGGTGTAAGACCTCGGCATACTGCTCAGTAAC
+ACGTGGATAATCTGCCCTCAGGTGAGGAATAATCCCGGGAAACTGGGGCTAATGCCTCATAGGAGACGGGTGCTGGAATG
+CTCTGTCTCCCAAAGGTCCGCCGCCTGAGGATGAGTCTGCGTCCGATTAGGTTGTTGTTGGGGTAACGGCCCAACAAGCC
+ATTGATCGGTACGGGTTGTGGGAGCAAGAGCCCGGAGATGGATTCTGAGACATGAATCCAGGCCCTACGGGGCGCAGCAG
+GCGCGAAAACTTTACAATGCGAGCAATCGTGATAAGGAAACCCTGAGTGCCTGTCAATGCAGGCTGTTCTGGTGTCTAAC
+ACGCACCAGGAGAAAGGGCGGGGCAAGACCGGTGCCAGCCGCCGCGGTAATACCGGCTGCTCGAGTGATAGCCGCTTTTA
+CTGGGCTTAAAGCGTTCGTAGCTTGGTTGTCAAGTCTCTGGGGAAATCTTCTGGCTTAACCAGAAGGCGTCTCAGGGAAA
+CTGGCGACCTAGGAACCGGGAGAGGTGAGACGTACTTCGGGGGTAGGAGTGAAATCTTGTAATCCCCGAGGGACGACCGA
+TGGCGAAGGCATCTCACCAGAACGGCTTCGACAGTGAGGGACGAAAGCTGGGGGAGCAAACCGGATTAGATACCCGGGTA
+GTCCCAGCCGTAAACGATGTGCGTTAGGTGTGTCGGTGACCACGAGTCGCCGAGGTGCCGAAGGGAAACCGTGAAACGCA
+CCGCCTGGGAAGTACGGTCGCAAGGCTGAAACTTAAAGGAATTGGCGGGGGAGCACCACAACGGGTGGAGCCTGCGGTTT
+AATTGGATTCAACGCCGGACAACTCACCGGATACGACAGCGGAATGATAGCCGGGCTGAAGACTCTGCTTGACCAGCTGA
+GAGGAGGTGCATGGCCGTCGTCAGTTCGTACTGTGAAGCATCCTGTTAAGTCAGGCAACGAGCGAGACCCACGCCAACAG
+TTGCCAGCATGGTCTCCGGACTGATGGGGACACTGTTGGGACCGCCTCTGCTAAAGGGGAGGAAGGAATGGGCAACGGTA
+GGTCAGCATGCCCCGAATTATCCGGGCTACACGCGGGCTACAATGGATGGGACAATGGGTTTCGACACCGAAAGGTGAAG
+GTAATCTCCTAACCCCACCCGTAGTTCGGATTGCGGGCTGCAACTCGCCCGCATGAAGCTGGAATCCGTAGTAATCGCGT
+CTCACGATGGCGCGGTGAATATGTCCCTGCTCCTTGCACACACCGCCCGTCAAACCACCCGAGTGGGGTCTGGATGAGGC
+GGCAGTTTATGCTGCTGTCGAATCTAGGTTCCGCAAGGGGGGTTAAGTCGTAACA
+EOF
+#+END_SRC
+
+
+#+BEGIN_SRC sh :noweb yes :dir /Users/mavatam/Dropbox/Scratch/Frank :results value verbatim
+
+cat <<'EOF' > outgroup.fasta
+<<outgroup>>
+
+cat outgroup.fasta otus.fa > otus_outgroup.fa
+
+#+END_SRC
+
+#+RESULTS:
+
+
+#+BEGIN_SRC sh
+
+conda create -n sina sina
+conda activate sina
+sina -i otus_outgroup.fa --intype fasta -o otus_align.fa --outtype fasta --db SILVA_132_SSURef_NR99_13_12_17_opt.arb
+conda deactivate
+fasttree -nt otus_align.fa > otus.tre
+
+#+END_SRC
+
+
+* Prepare the ITS data
+
+Process Yahoui's raw ITS data files
+
+#+BEGIN_SRC sh
+
+ls raw/*.fq | while read file; do trunc=$(echo $file | awk -F'[./]' '{print $2}'); awk -F'#' '{print $1}' $file > "trunc/"$trunc".fq"; done
+ls trunc/*.fq | grep 'R1' | while read file; do out=$(echo $file | awk -F'[/_]' '{print $2}'); usearch -fastq_mergepairs $file -fastqout "merged/"$out"_merged.fq" -relabel $out"." ; done
+cat merged/*.fq | awk '(NR - 1) % 4 == 0 {gsub("^@", "@S"); print} (NR - 1) % 4 != 0 {print}' > seqs.fq
+
+usearch -fastq_filter seqs.fq -fastq_maxee 1.0 -relabel Filt -fastaout filtered.fa
+usearch -fastx_uniques filtered.fa -relabel Uniq -sizeout -fastaout uniques.fa
+usearch -cluster_otus uniques.fa -minsize 2 -otus otus.fa -relabel Otu
+usearch -usearch_global seqs.fq -db otus.fa -strand plus -id 0.97 -otutabout otutab.txt -biomout otutab.json
+
+wget https://files.plutof.ut.ee/public/orig/EB/0C/EB0CCB3A871B77EA75E472D13926271076904A588D2E1C1EA5AFCF7397D48378.zip
+unzip EB0CCB3A871B77EA75E472D13926271076904A588D2E1C1EA5AFCF7397D48378.zip
+cat uchime_reference_dataset_28.06.2017/untrimmed_sequences/uchime_reference_dataset_untrimmed_28.06.2017.fasta | \
+   awk -F'|' '/>/ {print ">"$2"|"$5} !/>/ {print $0}' | \
+   awk '{gsub(";", ","); gsub("\\|", ";tax="); gsub("__", ":"); print}' > \
+   uchime_its.fa
+
+usearch -makeudb_usearch uchime_its.fa -output its.udb
+usearch -sintax otus.fa -db its.udb -tabbedout reads.sintax -strand both -sintax_cutoff 0.8
+
+#+END_SRC
+
+
+* Process on R
+
+** 16S processing
+
+#+BEGIN_SRC R :session
+
+library(tidyverse)
+library(vegan)
+library(readxl)
+library(broom)
+library(phyloseq)
+library(glue)
+library(DESeq2)
+library(viridis)
+
+site_labels <-
+    read_excel("Correct_site_labelling.xlsx") %>%
+    unite(ID, Site_code, Location)
+
+csa <-
+    read_csv("ECOIMPACT_csa_data_2013_ngs_means_190308.csv") %>%
+    select(-X1) %>%
+    unite(ID, Code_01, Location, sep="_") %>%
+    left_join(site_labels, by="ID") %>% 
+    filter(complete.cases(.)) %>%
+    filter(Rep == 1) %>%
+    select(-Rep) %>%
+    separate(ID, c("Smp", "USDS"), sep="_", remove = FALSE) %>%
+    mutate(
+        USDS = case_when(
+            USDS == "D" ~ "Downstream",
+            TRUE ~ "Upstream")) %>% 
+    data.frame(row.names = "ID") %>%
+    sample_data
+
+ribo_tax_tbl <-
+    read_tsv("reads.sintax", col_names=FALSE) %>%
+    select(X1, X4) %>%
+    mutate(X4 = str_replace_all(X4, "[a-z]:", ""),
+           X4 = str_replace_all(X4, '"', ""),
+           X4 = str_replace_all(X4, '_Gp6', "")) %>% 
+    separate(X4, c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep = ",") %>%
+    dplyr::rename("OTU" = "X1") %>% 
+    pivot_longer(
+        cols = -OTU,
+        names_to = "Level",
+        values_to = "Value") %>%
+    mutate(
+        Value = case_when(
+            is.na(Value) ~ "Unidentified",
+            Value == "unidentified" ~ "Unidentified",
+            TRUE ~ Value)) %>%
+    pivot_wider(
+        id_cols = "OTU",
+        names_from = "Level",
+        values_from = "Value") %>% 
+    data.frame(row.names = "OTU") %>%
+    as.matrix %>% 
+    tax_table
+
+ribo_otu_tbl <-
+    read_tsv("otutab.txt") %>%
+    dplyr::rename("OTU" = "#OTU ID") %>%
+    pivot_longer(
+        cols = starts_with("S"),
+        names_to = "ID_sample",
+        names_prefix = "S",
+        names_ptypes = list(ID_sample = integer()),
+        values_to = "Count") %>%
+    left_join(
+        site_labels,
+        by = "ID_sample") %>%
+    filter(Rep == 1) %>% 
+    pivot_wider(
+        id_cols = "OTU",
+        names_from = "ID",
+        values_from = "Count") %>% 
+    data.frame(row.names = "OTU") %>%
+    otu_table(taxa_are_rows = TRUE)
+
+TRE <- function(tree_file, outgroup)
+{
+    read_tree(tree_file) %>%
+        ape::root(outgroup, resolve.root=TRUE) %>%
+        phy_tree
+}
+
+trim_otu_table <- function(GP)
+{
+    wh0 <- genefilter_sample(GP, filterfun_sample(function(x) x > 5), A=0.5*nsamples(GP))
+    GP1 <- prune_taxa(wh0, GP)
+    transform_sample_counts(GP1, function(x) 1E6 * x/sum(x))
+}
+
+GP_16 <-
+    phyloseq(
+        ribo_otu_tbl,
+        ribo_tax_tbl,
+        TRE("otus.tre", "JQ837894.1.1415"),
+        csa) %>%
+    trim_otu_table %>% 
+    transform_sample_counts(function(OTU) OTU/sum(OTU))
+
+pdf("bacteria.pdf", useDingbats = FALSE)
+psmelt(GP_16) %>%
+    ggplot(aes(x=Site_name, y=Abundance, fill=Class)) +
+    geom_bar(stat="identity", position="stack") +
+    facet_grid(USDS~.) +
+    scale_fill_viridis(discrete = TRUE, option = "D") + 
+    theme(axis.text.x = element_text(angle = -90, hjust = 0)) + 
+    theme(panel.grid.major.y = element_blank(), panel.grid.major.x = element_blank(), 
+          panel.grid.minor = element_blank()) + ##strip out ggplot2 defaults
+    theme(axis.text.x = element_text(size=8,colour='grey20'),
+          axis.text.y = element_text(size=12,colour='grey20')) +
+    theme(panel.background = element_rect(fill="white", colour='black')) + 
+    ylab("Relative abundance") +
+    xlab("Site") +
+    labs(fill = "Genera") +
+    theme(axis.title.x = element_text(size=16),
+          axis.title.y = element_text(size=16)) + 
+    theme(legend.key.size = unit(0.7, "lines"),## Makes legend keys smaller
+          strip.background = element_rect(color="black", size=.5, linetype="solid"),
+          strip.text.x = element_text(
+              size = 16, color = "black"),
+          strip.text.y = element_text(
+              size = 16, color = "black"))
+dev.off()
+
+
+#+END_SRC
+
+
+
+** ITS processing
+
+#+BEGIN_SRC R :session
+
+its_tax_tbl <-
+    read_tsv("ITS/reads.sintax", col_names=FALSE) %>%
+    select(X1, X4) %>%
+    mutate(X4 = str_replace_all(X4, "[a-z]:", ""),
+           X4 = str_replace_all(X4, '"', ""),
+           X4 = str_replace_all(X4, '_Gp6', "")) %>% 
+    separate(X4, c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep = ",") %>%
+    dplyr::rename("OTU" = "X1") %>%
+    pivot_longer(
+        cols = -OTU,
+        names_to = "Level",
+        values_to = "Value") %>%
+    mutate(
+        Value = case_when(
+            is.na(Value) ~ "Unidentified",
+            Value == "unidentified" ~ "Unidentified",
+            TRUE ~ Value)) %>%
+    pivot_wider(
+        id_cols = "OTU",
+        names_from = "Level",
+        values_from = "Value") %>% 
+    data.frame(row.names = "OTU") %>%
+    as.matrix %>% 
+    tax_table
+
+its_otu_tbl <-
+    read_tsv("ITS/otutab.txt") %>%
+    dplyr::rename("OTU" = "#OTU ID") %>%
+    pivot_longer(
+        cols = starts_with("S"),
+        names_to = "ID_sample",
+        names_prefix = "S",
+        names_ptypes = list(ID_sample = integer()),
+        values_to = "Count") %>%
+    left_join(
+        site_labels,
+        by = "ID_sample") %>%
+    filter(Rep == 1) %>% 
+    pivot_wider(
+        id_cols = "OTU",
+        names_from = "ID",
+        values_from = "Count") %>% 
+    data.frame(row.names = "OTU") %>%
+    otu_table(taxa_are_rows = TRUE)
+
+GP_ITS <-
+    phyloseq(
+        its_otu_tbl,
+        its_tax_tbl,
+        csa) %>%
+    trim_otu_table %>% 
+    transform_sample_counts(function(OTU) OTU/sum(OTU))
+
+pdf("fungi.pdf", useDingbats = FALSE)
+psmelt(GP_ITS) %>%
+    ggplot(aes(x=Site_name, y=Abundance, fill=Class)) +
+    geom_bar(stat="identity", position="stack") +
+    facet_grid(USDS~.) +
+    scale_fill_viridis(discrete = TRUE, option = "D") + 
+    theme(axis.text.x = element_text(angle = -90, hjust = 0)) + 
+    theme(panel.grid.major.y = element_blank(), panel.grid.major.x = element_blank(), 
+          panel.grid.minor = element_blank()) + ##strip out ggplot2 defaults
+    theme(axis.text.x = element_text(size=8,colour='grey20'),
+          axis.text.y = element_text(size=12,colour='grey20')) +
+    theme(panel.background = element_rect(fill="white", colour='black')) + 
+    ylab("Relative abundance") +
+    xlab("Site") +
+    labs(fill = "Genera") +
+    theme(axis.title.x = element_text(size=16),
+          axis.title.y = element_text(size=16)) + 
+    theme(legend.key.size = unit(0.7, "lines"),## Makes legend keys smaller
+          strip.background = element_rect(color="black", size=.5, linetype="solid"),
+          strip.text.x = element_text(
+              size = 16, color = "black"),
+          strip.text.y = element_text(
+              size = 16, color = "black"))
+dev.off()
+
+#+END_SRC
+
+
+
+** DESeq2 analysis
+
+#+BEGIN_SRC R :session
+
+smp_matrix <-
+    phyloseq(
+        its_otu_tbl,
+        its_tax_tbl,
+        csa) %>%
+    psmelt %>%
+    select(c(2, 5:18)) %>%
+    unique
+
+its_tax_table <-
+    its_tax_tbl %>%
+    as.data.frame %>% 
+    as_tibble(rownames = "OTU")
+
+its_otu_matrix <- 
+    phyloseq(
+        its_otu_tbl,
+        its_tax_tbl,
+        csa) %>%
+    psmelt %>%
+    pivot_wider(
+        id_cols = OTU,
+        names_from = Sample,
+        values_from = Abundance) %>%
+    data.frame(row.names = "OTU") %>%
+    as.matrix
+
+ribo_tax_table <-
+    ribo_tax_tbl %>%
+    as.data.frame %>% 
+    as_tibble(rownames = "OTU")
+    
+ribo_otu_matrix <- 
+    phyloseq(
+        ribo_otu_tbl,
+        ribo_tax_tbl,
+        TRE("otus.tre", "JQ837894.1.1415"),
+        csa) %>%
+    psmelt %>%
+    pivot_wider(
+        id_cols = OTU,
+        names_from = Sample,
+        values_from = Abundance) %>%
+    data.frame(row.names = "OTU") %>%
+    as.matrix
+
+fit_deseq <- function(otu_matrix, tax_table, test, pval, ...)
+{
+    DESeqDataSetFromMatrix(
+        countData = otu_matrix,
+        colData = smp_matrix,
+        design = ...) %>%
+        DESeq(test = test) %>%
+        results %>% 
+        as_tibble(rownames = "OTU") %>%
+        arrange(pvalue) %>%
+        filter(pvalue < pval) %>%
+        left_join(tax_table) %>%
+        mutate(Model = paste0(as.formula(...), collapse=""))
+}
+
+its_sig_differences <- 
+    bind_rows(
+        fit_deseq(its_otu_matrix, its_tax_table, "Wald", 0.05, ~USDS),
+        fit_deseq(its_otu_matrix, its_tax_table, "Wald", 0.05, ~USDS+Site_name))
+write_csv(its_sig_differences, "fungal_differences.csv")
+
+ribo_sig_differences <- 
+    bind_rows(
+        fit_deseq(ribo_otu_matrix, ribo_tax_table, "Wald", 0.05, ~USDS),
+        fit_deseq(ribo_otu_matrix, ribo_tax_table, "Wald", 0.05, ~USDS+Site_name))
+write_csv(ribo_sig_differences, "bacterial_differences.csv")
+
+#+END_SRC
+
+
+
+** Permanovas
+
+#+BEGIN_SRC R
+
+GP_16 <-
+    phyloseq(
+        ribo_otu_tbl,
+        ribo_tax_tbl,
+        TRE("otus.tre", "JQ837894.1.1415"),
+        csa) %>%
+    transform_sample_counts(function(OTU) OTU/sum(OTU))
+
+ribo_matrix <- 
+    GP_16 %>%
+    otu_table %>%
+    as.data.frame %>%
+    as_tibble(rownames="OTU") %>%
+    pivot_longer(
+        cols = -OTU,
+        names_to = "Smp",
+        values_to = "Value") %>%
+    pivot_wider(
+        id_cols = Smp,
+        names_from = "OTU",
+        values_from = "Value") %>%
+    data.frame(row.names = "Smp") %>%
+    as.matrix
+
+its_matrix <- 
+    GP_ITS %>%
+    otu_table %>%
+    as.data.frame %>%
+    as_tibble(rownames="OTU") %>%
+    pivot_longer(
+        cols = -OTU,
+        names_to = "Smp",
+        values_to = "Value") %>%
+    pivot_wider(
+        id_cols = Smp,
+        names_from = "OTU",
+        values_from = "Value") %>%
+    data.frame(row.names = "Smp") %>%
+    as.matrix
+
+calc_adonis <- function(otu_matrix)
+{
+    adonis_formula <- as.formula(paste(otu_matrix, "~ USDS"))
+    adonis(adonis_formula, strata = smp_matrix$Site_name, data=smp_matrix, dist="bray") %>% 
+        .$aov.tab %>%
+        as_tibble(rownames="Term")
+}
+
+map_dfr(
+    c("ribo_matrix", "its_matrix"),
+    calc_adonis,
+    .id="Otu_type") %>%
+    write_csv("community_shifts.csv")
+
+#+END_SRC
+
+
+
+** RDA analyses
+
+#+BEGIN_SRC R :session
+
+csa <-
+    read_csv("ECOIMPACT_csa_data_2013_ngs_means_190308.csv") %>%
+    select(-X1) %>%
+    unite(ID, Code_01, Location, sep="_")
+
+ribo_csa_matrix <- 
+    GP_16 %>%
+    otu_table %>%
+    data.frame %>%
+    as_tibble(rownames="OTU") %>%
+    pivot_longer(
+        cols= -OTU, 
+        names_to="ID",
+        values_to="Abund") %>%
+    pivot_wider(
+        id_cols=ID, 
+        names_from="OTU",
+        values_from="Abund") %>%
+    left_join(csa, .) %>%
+    filter(complete.cases(.))
+
+csa_data <-
+    ribo_csa_matrix %>%
+    select(1:13)
+
+FULL.cap <-
+    capscale(
+        ribo_csa_matrix[-c(1:13)] ~ k_mte_dd_m_tsl + k_mte_dd_m_ml + MTE_temp_resp,
+        data=ribo_csa_matrix[1:13])
+
+basplot <-
+    plot(FULL.cap)
+
+taxonomy <-
+    GP_16 %>%
+    tax_table %>%
+    data.frame %>% 
+    as_tibble(rownames="OTU")
+
+species <-
+    basplot$species %>% 
+    as_tibble(rownames="OTU") %>% 
+    mutate(dist=sqrt(CAP1^2 + CAP2^2)) %>%
+    arrange(desc(dist)) %>%
+    left_join(taxonomy) %>% 
+    head(10)
+
+sites <-
+    basplot$sites %>%
+    data.frame %>%
+    mutate(ID = csa_data$ID) %>%
+    left_join(site_labels) %>%
+    filter(Rep == 1) %>%
+    separate(Yaohui_labelling, c("Name", "USDS"), sep="_") %>%
+    select(-Rep, -Name, -ID_sample)
+    
+arrows <-
+    basplot$biplot %>%
+    data.frame %>%
+    as_tibble(rownames="Variable")
+    
+mult <-
+    basplot$biplot %>%
+    attributes %>%
+    .$arrow.mul
+
+eigenvals(FULL.cap) / sum(eigenvals(FULL.cap))*100
+anova(FULL.cap)
+
+pdf("bacteria_rda.pdf", useDingbats = FALSE)
+ggplot() +
+    geom_point(data=sites, aes(x=CAP1, y=CAP2, shape=USDS, color=Site_name)) +
+    geom_point(data=species, aes(x=CAP1, y=CAP2)) + 
+    geom_segment(data = arrows,
+                 aes(x = 0, xend = mult * CAP1,
+                     y = 0, yend = mult * CAP2),
+                 arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+    geom_text_repel(data = arrows,
+              aes(x= (mult + mult/10) * CAP1, y = (mult + mult/10) * CAP2, 
+                  label = Variable),
+              size = 2,
+              hjust = 0.5) +
+    geom_text_repel(data = species,
+              aes(x= CAP1, y = CAP2, 
+                  label = Genus),
+              size = 2,
+              hjust = 1) + 
+    xlab("CAP1 (16.5%)") +
+    ylab("CAP2 (12.5%)") +
+    ggtitle("Y ~ tsl + ml + resp (p = 0.005)")
+dev.off()
+
+
+
+its_csa_matrix <- 
+    GP_ITS %>%
+    otu_table %>%
+    data.frame %>%
+    as_tibble(rownames="OTU") %>%
+    pivot_longer(
+        cols= -OTU, 
+        names_to="ID",
+        values_to="Abund") %>%
+    pivot_wider(
+        id_cols=ID, 
+        names_from="OTU",
+        values_from="Abund") %>%
+    left_join(csa, .) %>% 
+    filter(complete.cases(.))
+
+FULL.cap <-
+    capscale(
+        its_csa_matrix[-c(1:13)] ~ k_mte_dd_m_tsl + k_mte_dd_m_ml + MTE_temp_resp,
+        data=its_csa_matrix[1:13])
+
+basplot <-
+    plot(FULL.cap)
+
+taxonomy <-
+    GP_ITS %>%
+    tax_table %>%
+    data.frame %>% 
+    as_tibble(rownames="OTU")
+
+species <-
+    basplot$species %>% 
+    as_tibble(rownames="OTU") %>% 
+    mutate(dist=sqrt(CAP1^2 + CAP2^2)) %>%
+    arrange(desc(dist)) %>%
+    left_join(taxonomy) %>% 
+    head(10)
+
+sites <-
+    basplot$sites %>%
+    data.frame %>%
+    mutate(ID = csa_data$ID) %>%
+    left_join(site_labels) %>%
+    filter(Rep == 1) %>%
+    separate(Yaohui_labelling, c("Name", "USDS"), sep="_") %>%
+    select(-Rep, -Name, -ID_sample)
+    
+arrows <-
+    basplot$biplot %>%
+    data.frame %>%
+    as_tibble(rownames="Variable")
+    
+mult <-
+    basplot$biplot %>%
+    attributes %>%
+    .$arrow.mul
+
+eigenvals(FULL.cap) / sum(eigenvals(FULL.cap))*100
+anova(FULL.cap)
+
+pdf("fungi_rda.pdf", useDingbats = FALSE)
+ggplot() +
+    geom_point(data=sites, aes(x=CAP1, y=CAP2, shape=USDS, color=Site_name)) +
+    geom_point(data=species, aes(x=CAP1, y=CAP2)) + 
+    geom_segment(data = arrows,
+                 aes(x = 0, xend = mult * CAP1,
+                     y = 0, yend = mult * CAP2),
+                 arrow = arrow(length = unit(0.25, "cm")), colour = "grey") +
+    geom_text_repel(data = arrows,
+              aes(x= (mult + mult/10) * CAP1, y = (mult + mult/10) * CAP2, 
+                  label = Variable),
+              size = 2,
+              hjust = 0.5) +
+    geom_text_repel(data = species,
+              aes(x= CAP1, y = CAP2, 
+                  label = Class),
+              size = 2,
+              hjust = 1) + 
+    xlab("CAP1 (16.9%)") +
+    ylab("CAP2 (11.5%)") +
+    ggtitle("Y ~ tsl + ml + resp (p = 0.044)")
+dev.off()
+
+
+#+END_SRC
+
+
