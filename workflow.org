@@ -119,6 +119,7 @@ library(phyloseq)
 library(glue)
 library(DESeq2)
 library(viridis)
+library(ggrepel)
 
 site_labels <-
     read_excel("Correct_site_labelling.xlsx") %>%
@@ -471,12 +472,14 @@ map_dfr(
 
 #+BEGIN_SRC R :session
 
-csa <-
-    read_csv("ECOIMPACT_csa_data_2013_ngs_means_190308.csv") %>%
-    select(-X1) %>%
-    unite(ID, Code_01, Location, sep="_")
+csa_measurements <-
+    read_csv("CSA_2013_ngs_ecofunc_mu_191108.csv") %>%
+    dplyr::rename(
+               ID=Code_02,
+               Tensile_strength_loss=`Tensile strength loss`,
+               Mass_loss=`Mass loss`)
 
-ribo_csa_matrix <- 
+ribo_csa_measurements_matrix <- 
     GP_16 %>%
     otu_table %>%
     data.frame %>%
@@ -489,17 +492,13 @@ ribo_csa_matrix <-
         id_cols=ID, 
         names_from="OTU",
         values_from="Abund") %>%
-    left_join(csa, .) %>%
+    left_join(csa_measurements, .) %>%
     filter(complete.cases(.))
-
-csa_data <-
-    ribo_csa_matrix %>%
-    select(1:13)
 
 FULL.cap <-
     capscale(
-        ribo_csa_matrix[-c(1:13)] ~ k_mte_dd_m_tsl + k_mte_dd_m_ml + MTE_temp_resp,
-        data=ribo_csa_matrix[1:13])
+        ribo_csa_measurements_matrix[-c(1:8)] ~ Tensile_strength_loss + Mass_loss + Respiration,
+        data=ribo_csa_measurements_matrix[1:8])
 
 basplot <-
     plot(FULL.cap)
@@ -521,7 +520,7 @@ species <-
 sites <-
     basplot$sites %>%
     data.frame %>%
-    mutate(ID = csa_data$ID) %>%
+    mutate(ID = csa_measurements$ID) %>%
     left_join(site_labels) %>%
     filter(Rep == 1) %>%
     separate(Yaohui_labelling, c("Name", "USDS"), sep="_") %>%
@@ -558,14 +557,14 @@ ggplot() +
                   label = Genus),
               size = 2,
               hjust = 1) + 
-    xlab("CAP1 (16.5%)") +
-    ylab("CAP2 (12.5%)") +
-    ggtitle("Y ~ tsl + ml + resp (p = 0.005)")
+    xlab("CAP1 (17.4%)") +
+    ylab("CAP2 (10.2%)") +
+    ggtitle("Y ~ tsl + ml + resp (p = 0.015)")
 dev.off()
 
 
 
-its_csa_matrix <- 
+its_csa_measurements_matrix <- 
     GP_ITS %>%
     otu_table %>%
     data.frame %>%
@@ -578,13 +577,13 @@ its_csa_matrix <-
         id_cols=ID, 
         names_from="OTU",
         values_from="Abund") %>%
-    left_join(csa, .) %>% 
+    left_join(csa_measurements, .) %>% 
     filter(complete.cases(.))
 
 FULL.cap <-
     capscale(
-        its_csa_matrix[-c(1:13)] ~ k_mte_dd_m_tsl + k_mte_dd_m_ml + MTE_temp_resp,
-        data=its_csa_matrix[1:13])
+        its_csa_measurements_matrix[-c(1:8)] ~ Tensile_strength_loss + Mass_loss + Respiration,
+        data=its_csa_measurements_matrix[1:8])
 
 basplot <-
     plot(FULL.cap)
@@ -606,7 +605,7 @@ species <-
 sites <-
     basplot$sites %>%
     data.frame %>%
-    mutate(ID = csa_data$ID) %>%
+    mutate(ID = csa_measurements$ID) %>%
     left_join(site_labels) %>%
     filter(Rep == 1) %>%
     separate(Yaohui_labelling, c("Name", "USDS"), sep="_") %>%
@@ -643,11 +642,10 @@ ggplot() +
                   label = Class),
               size = 2,
               hjust = 1) + 
-    xlab("CAP1 (16.9%)") +
-    ylab("CAP2 (11.5%)") +
-    ggtitle("Y ~ tsl + ml + resp (p = 0.044)")
+    xlab("CAP1 (13.8%)") +
+    ylab("CAP2 (9.8%)") +
+    ggtitle("Y ~ tsl + ml + resp (p = 0.104)")
 dev.off()
-
 
 #+END_SRC
 
