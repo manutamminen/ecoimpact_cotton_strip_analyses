@@ -142,7 +142,7 @@ csa <-
     sample_data
 
 ribo_tax_tbl <-
-    read_tsv("reads.sintax", col_names=FALSE) %>%
+    read_tsv("bact_reads.sintax", col_names=FALSE) %>%
     select(X1, X4) %>%
     mutate(X4 = str_replace_all(X4, "[a-z]:", ""),
            X4 = str_replace_all(X4, '"', ""),
@@ -167,7 +167,7 @@ ribo_tax_tbl <-
     tax_table
 
 ribo_otu_tbl <-
-    read_tsv("otutab.txt") %>%
+    read_tsv("bact_otutab.txt") %>%
     dplyr::rename("OTU" = "#OTU ID") %>%
     pivot_longer(
         cols = starts_with("S"),
@@ -244,7 +244,7 @@ dev.off()
 #+BEGIN_SRC R :session
 
 its_tax_tbl <-
-    read_tsv("ITS/reads.sintax", col_names=FALSE) %>%
+    read_tsv("its_reads.sintax", col_names=FALSE) %>%
     select(X1, X4) %>%
     mutate(X4 = str_replace_all(X4, "[a-z]:", ""),
            X4 = str_replace_all(X4, '"', ""),
@@ -269,7 +269,7 @@ its_tax_tbl <-
     tax_table
 
 its_otu_tbl <-
-    read_tsv("ITS/otutab.txt") %>%
+    read_tsv("its_otutab.txt") %>%
     dplyr::rename("OTU" = "#OTU ID") %>%
     pivot_longer(
         cols = starts_with("S"),
