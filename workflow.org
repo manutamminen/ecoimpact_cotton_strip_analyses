@@ -28,6 +28,13 @@ pynast -i otus.fa -t core_set_aligned.fasta
 
 #+END_SRC
 
+Sequence counts:
+
+valid_copy.fq:412446
+filtered.fa:334028
+uniques.fa:92993
+otus.fa:1012
+
 
 Use the following outgroup:
 #+BEGIN_SRC sh :noweb-ref outgroup
@@ -77,6 +84,8 @@ fasttree -nt otus_align.fa > otus.tre
 #+END_SRC
 
 
+
+
 * Prepare the ITS data
 
 Process Yahoui's raw ITS data files
@@ -103,6 +112,13 @@ usearch -makeudb_usearch uchime_its.fa -output its.udb
 usearch -sintax otus.fa -db its.udb -tabbedout reads.sintax -strand both -sintax_cutoff 0.8
 
 #+END_SRC
+
+Sequence counts:
+
+seqs.fq:451000
+filtered.fa:448447
+uniques.fa:73328
+otus.fa:2201
 
 
 * Process on R
@@ -288,12 +304,24 @@ its_otu_tbl <-
     data.frame(row.names = "OTU") %>%
     otu_table(taxa_are_rows = TRUE)
 
-GP_ITS <-
+read_tsv("its_otutab.txt") %>%
+    dplyr::rename("OTU" = "#OTU ID") %>%
+    pivot_longer(
+        cols = starts_with("S"),
+        names_to = "ID_sample",
+        values_to = "Count") %>% 
+    pivot_wider(
+        id_cols = "ID_sample",
+        names_from = "OTU",
+        values_from = "Count")
+
+
+    GP_ITS <-
     phyloseq(
         its_otu_tbl,
         its_tax_tbl,
         csa) %>%
-    trim_otu_table %>% 
+    trim_otu_table
     transform_sample_counts(function(OTU) OTU/sum(OTU))
 
 pdf("fungi.pdf", useDingbats = FALSE)
@@ -340,7 +368,7 @@ smp_matrix <-
 
 its_tax_table <-
     its_tax_tbl %>%
-    as.data.frame %>% 
+    as.data.frame
     as_tibble(rownames = "OTU")
 
 its_otu_matrix <- 
@@ -358,7 +386,7 @@ its_otu_matrix <-
 
 ribo_tax_table <-
     ribo_tax_tbl %>%
-    as.data.frame %>% 
+    as.data.frame
     as_tibble(rownames = "OTU")
     
 ribo_otu_matrix <- 
@@ -382,7 +410,7 @@ fit_deseq <- function(otu_matrix, tax_table, test, pval, ...)
         colData = smp_matrix,
         design = ...) %>%
         DESeq(test = test) %>%
-        results %>% 
+        results
         as_tibble(rownames = "OTU") %>%
         arrange(pvalue) %>%
         filter(pvalue < pval) %>%
@@ -453,7 +481,7 @@ its_matrix <-
 calc_adonis <- function(otu_matrix)
 {
     adonis_formula <- as.formula(paste(otu_matrix, "~ USDS"))
-    adonis(adonis_formula, strata = smp_matrix$Site_name, data=smp_matrix, dist="bray") %>% 
+    adonis(adonis_formula, strata = smp_matrix$Site_name, data=smp_matrix, dist="bray")
         .$aov.tab %>%
         as_tibble(rownames="Term")
 }
@@ -506,15 +534,15 @@ basplot <-
 taxonomy <-
     GP_16 %>%
     tax_table %>%
-    data.frame %>% 
+    data.frame
     as_tibble(rownames="OTU")
 
 species <-
-    basplot$species %>% 
-    as_tibble(rownames="OTU") %>% 
+    basplot$species
+    as_tibble(rownames="OTU")
     mutate(dist=sqrt(CAP1^2 + CAP2^2)) %>%
     arrange(desc(dist)) %>%
-    left_join(taxonomy) %>% 
+    left_join(taxonomy)
     head(10)
 
 sites <-
@@ -577,7 +605,7 @@ its_csa_measurements_matrix <-
         id_cols=ID, 
         names_from="OTU",
         values_from="Abund") %>%
-    left_join(csa_measurements, .) %>% 
+    left_join(csa_measurements, .)
     filter(complete.cases(.))
 
 FULL.cap <-
@@ -591,15 +619,15 @@ basplot <-
 taxonomy <-
     GP_ITS %>%
     tax_table %>%
-    data.frame %>% 
+    data.frame
     as_tibble(rownames="OTU")
 
 species <-
-    basplot$species %>% 
-    as_tibble(rownames="OTU") %>% 
+    basplot$species
+    as_tibble(rownames="OTU")
     mutate(dist=sqrt(CAP1^2 + CAP2^2)) %>%
     arrange(desc(dist)) %>%
-    left_join(taxonomy) %>% 
+    left_join(taxonomy)
     head(10)
 
 sites <-
