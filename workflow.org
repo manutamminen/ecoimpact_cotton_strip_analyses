@@ -20,6 +20,8 @@ usearch -usearch_global valid_copy.fq -db otus.fa -strand plus -id 0.97 -otutabo
 
 wget https://www.drive5.com/sintax/rdp_16s_v16.fa.gz
 usearch -makeudb_usearch rdp_16s_v16.fa -output rdp_16s.udb
+
+
 usearch -sintax otus.fa -db rdp_16s.udb -tabbedout reads.sintax -strand both -sintax_cutoff 0.8
 
 wget http://greengenes.lbl.gov/Download/Sequence_Data/Fasta_data_files/core_set_aligned.fasta
@@ -315,13 +317,12 @@ read_tsv("its_otutab.txt") %>%
         names_from = "OTU",
         values_from = "Count")
 
-
-    GP_ITS <-
+GP_ITS <-
     phyloseq(
         its_otu_tbl,
         its_tax_tbl,
         csa) %>%
-    trim_otu_table
+    trim_otu_table %>% 
     transform_sample_counts(function(OTU) OTU/sum(OTU))
 
 pdf("fungi.pdf", useDingbats = FALSE)
@@ -357,26 +358,44 @@ dev.off()
 
 #+BEGIN_SRC R :session
 
-smp_matrix <-
-    phyloseq(
-        its_otu_tbl,
-        its_tax_tbl,
-        csa) %>%
-    psmelt %>%
-    select(c(2, 5:18)) %>%
-    unique
-
 its_tax_table <-
     its_tax_tbl %>%
-    as.data.frame
+    as.data.frame %>% 
     as_tibble(rownames = "OTU")
 
-its_otu_matrix <- 
+its_otu_data <- 
     phyloseq(
         its_otu_tbl,
         its_tax_tbl,
         csa) %>%
     psmelt %>%
+    as_tibble
+
+its_otu_matrix <- 
+    its_otu_data %>% 
+    pivot_wider(
+        id_cols = OTU,
+        names_from = Sample,
+        values_from = Abundance) %>%
+    data.frame(row.names = "OTU") %>%
+    as.matrix
+
+its_tax_table <-
+    its_otu_data %>% 
+    select(OTU, Kingdom, Phylum, Class, Order, Family, Genus)
+
+
+ribo_otu_data <- 
+    phyloseq(
+        ribo_otu_tbl,
+        ribo_tax_tbl,
+        TRE("otus.tre", "JQ837894.1.1415"),
+        csa) %>%
+    psmelt %>% 
+    as_tibble
+
+ribo_otu_matrix <- 
+    ribo_otu_data %>% 
     pivot_wider(
         id_cols = OTU,
         names_from = Sample,
@@ -385,23 +404,8 @@ its_otu_matrix <-
     as.matrix
 
 ribo_tax_table <-
-    ribo_tax_tbl %>%
-    as.data.frame
-    as_tibble(rownames = "OTU")
-    
-ribo_otu_matrix <- 
-    phyloseq(
-        ribo_otu_tbl,
-        ribo_tax_tbl,
-        TRE("otus.tre", "JQ837894.1.1415"),
-        csa) %>%
-    psmelt %>%
-    pivot_wider(
-        id_cols = OTU,
-        names_from = Sample,
-        values_from = Abundance) %>%
-    data.frame(row.names = "OTU") %>%
-    as.matrix
+    ribo_otu_data %>% 
+    select(OTU, Kingdom, Phylum, Class, Order, Family, Genus)
 
 fit_deseq <- function(otu_matrix, tax_table, test, pval, ...)
 {
@@ -410,7 +414,7 @@ fit_deseq <- function(otu_matrix, tax_table, test, pval, ...)
         colData = smp_matrix,
         design = ...) %>%
         DESeq(test = test) %>%
-        results
+        results %>% 
         as_tibble(rownames = "OTU") %>%
         arrange(pvalue) %>%
         filter(pvalue < pval) %>%
@@ -421,13 +425,15 @@ fit_deseq <- function(otu_matrix, tax_table, test, pval, ...)
 its_sig_differences <- 
     bind_rows(
         fit_deseq(its_otu_matrix, its_tax_table, "Wald", 0.05, ~USDS),
-        fit_deseq(its_otu_matrix, its_tax_table, "Wald", 0.05, ~USDS+Site_name))
+        fit_deseq(its_otu_matrix, its_tax_table, "Wald", 0.05, ~USDS+Site_name)) %>% 
+    unique
 write_csv(its_sig_differences, "fungal_differences.csv")
 
 ribo_sig_differences <- 
     bind_rows(
         fit_deseq(ribo_otu_matrix, ribo_tax_table, "Wald", 0.05, ~USDS),
-        fit_deseq(ribo_otu_matrix, ribo_tax_table, "Wald", 0.05, ~USDS+Site_name))
+        fit_deseq(ribo_otu_matrix, ribo_tax_table, "Wald", 0.05, ~USDS+Site_name)) %>% 
+    unique
 write_csv(ribo_sig_differences, "bacterial_differences.csv")
 
 #+END_SRC
@@ -444,9 +450,18 @@ GP_16 <-
         ribo_tax_tbl,
         TRE("otus.tre", "JQ837894.1.1415"),
         csa) %>%
+    trim_otu_table %>% 
     transform_sample_counts(function(OTU) OTU/sum(OTU))
 
-ribo_matrix <- 
+GP_ITS <-
+    phyloseq(
+        its_otu_tbl,
+        its_tax_tbl,
+        csa) %>%
+    trim_otu_table %>% 
+    transform_sample_counts(function(OTU) OTU/sum(OTU))
+
+ribo_data <- 
     GP_16 %>%
     otu_table %>%
     as.data.frame %>%
@@ -459,10 +474,10 @@ ribo_matrix <-
         id_cols = Smp,
         names_from = "OTU",
         values_from = "Value") %>%
-    data.frame(row.names = "Smp") %>%
-    as.matrix
+    left_join(smp_matrix, ., by = c("Sample" = "Smp")) %>% 
+    as_tibble
 
-its_matrix <- 
+its_data <- 
     GP_ITS %>%
     otu_table %>%
     as.data.frame %>%
@@ -474,23 +489,34 @@ its_matrix <-
     pivot_wider(
         id_cols = Smp,
         names_from = "OTU",
-        values_from = "Value") %>%
-    data.frame(row.names = "Smp") %>%
-    as.matrix
+        values_from = "Value") %>% 
+    left_join(smp_matrix, ., by = c("Sample" = "Smp")) %>% 
+    as_tibble
 
-calc_adonis <- function(otu_matrix)
-{
-    adonis_formula <- as.formula(paste(otu_matrix, "~ USDS"))
-    adonis(adonis_formula, strata = smp_matrix$Site_name, data=smp_matrix, dist="bray")
-        .$aov.tab %>%
-        as_tibble(rownames="Term")
-}
+adonis(
+    its_data %>% select(-(1:15)) %>% as.matrix %>% decostand("pa")
+    ~ its_data$USDS,
+    strata = its_data$Site_name,
+    method = "bray")
+ 
+adonis(
+    its_data %>% select(-(1:15)) %>% as.matrix
+    ~ its_data$USDS,
+    strata = its_data$Site_name,
+    method = "bray")
+ 
 
-map_dfr(
-    c("ribo_matrix", "its_matrix"),
-    calc_adonis,
-    .id="Otu_type") %>%
-    write_csv("community_shifts.csv")
+adonis(
+    ribo_data %>% select(-(1:15)) %>% as.matrix %>% decostand("pa")
+    ~ its_data$USDS,
+    strata = its_data$Site_name,
+    method = "bray")
+ 
+adonis(
+    ribo_data %>% select(-(1:15)) %>% as.matrix
+    ~ its_data$USDS,
+    strata = its_data$Site_name,
+    method = "bray")
 
 #+END_SRC
 
@@ -534,7 +560,7 @@ basplot <-
 taxonomy <-
     GP_16 %>%
     tax_table %>%
-    data.frame
+    data.frame %>% 
     as_tibble(rownames="OTU")
 
 species <-
@@ -542,7 +568,7 @@ species <-
     as_tibble(rownames="OTU")
     mutate(dist=sqrt(CAP1^2 + CAP2^2)) %>%
     arrange(desc(dist)) %>%
-    left_join(taxonomy)
+    left_join(taxonomy) %>% 
     head(10)
 
 sites <-
