@@ -180,10 +180,36 @@ ribo_tax_tbl <-
         id_cols = "OTU",
         names_from = "Level",
         values_from = "Value") %>% 
+    filter(Phylum != "Cyanobacteria/Chloroplast") %>% 
     data.frame(row.names = "OTU") %>%
     as.matrix %>% 
     tax_table
 
+chloroplast_otus <-
+    ribo_tax_tbl <-
+        read_tsv("bact_reads.sintax", col_names=FALSE) %>%
+        select(X1, X4) %>%
+        mutate(X4 = str_replace_all(X4, "[a-z]:", ""),
+               X4 = str_replace_all(X4, '"', ""),
+               X4 = str_replace_all(X4, '_Gp6', "")) %>% 
+        separate(X4, c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus"), sep = ",") %>%
+        dplyr::rename("OTU" = "X1") %>% 
+        pivot_longer(
+            cols = -OTU,
+            names_to = "Level",
+            values_to = "Value") %>%
+        mutate(
+            Value = case_when(
+                is.na(Value) ~ "Unidentified",
+                Value == "unidentified" ~ "Unidentified",
+                TRUE ~ Value)) %>%
+        pivot_wider(
+            id_cols = "OTU",
+            names_from = "Level",
+            values_from = "Value") %>% 
+        filter(Phylum == "Cyanobacteria/Chloroplast") %>% 
+        .$OTU
+    
 ribo_otu_tbl <-
     read_tsv("bact_otutab.txt") %>%
     dplyr::rename("OTU" = "#OTU ID") %>%
@@ -191,8 +217,8 @@ ribo_otu_tbl <-
         cols = starts_with("S"),
         names_to = "ID_sample",
         names_prefix = "S",
-        names_ptypes = list(ID_sample = integer()),
-        values_to = "Count") %>%
+        values_to = "Count") %>% 
+    mutate(ID_sample = as.numeric(ID_sample)) %>%
     left_join(
         site_labels,
         by = "ID_sample") %>%
@@ -201,8 +227,29 @@ ribo_otu_tbl <-
         id_cols = "OTU",
         names_from = "ID",
         values_from = "Count") %>% 
+    filter(!(OTU %in% chloroplast_otus)) %>% 
     data.frame(row.names = "OTU") %>%
     otu_table(taxa_are_rows = TRUE)
+
+
+read_tsv("bact_otutab.txt") %>%
+    dplyr::rename("OTU" = "#OTU ID") %>%
+    pivot_longer(
+        cols = starts_with("S"),
+        names_to = "ID_sample",
+        names_prefix = "S",
+        values_to = "Count") %>% 
+    mutate(ID_sample = as.numeric(ID_sample)) %>%
+    left_join(
+        site_labels,
+        by = "ID_sample") %>%
+    filter(Rep == 1,
+           !(OTU %in% chloroplast_otus)) %>% 
+    separate(Yaohui_labelling, into = c("YA", "USDS"), sep = "_") %>% 
+    unite(Name_USDS, Site_name, USDS, sep = "_") %>% 
+    group_by(Name_USDS) %>% 
+    summarise(Tot = sum(Count)) %>% 
+    write_csv("seq_depth_bacteria.csv")
 
 TRE <- function(tree_file, outgroup)
 {
@@ -250,6 +297,7 @@ psmelt(GP_16) %>%
               size = 16, color = "black"),
           strip.text.y = element_text(
               size = 16, color = "black"))
+
 dev.off()
 
 
@@ -293,8 +341,8 @@ its_otu_tbl <-
         cols = starts_with("S"),
         names_to = "ID_sample",
         names_prefix = "S",
-        names_ptypes = list(ID_sample = integer()),
         values_to = "Count") %>%
+    mutate(ID_sample = as.numeric(ID_sample)) %>%
     left_join(
         site_labels,
         by = "ID_sample") %>%
@@ -306,16 +354,34 @@ its_otu_tbl <-
     data.frame(row.names = "OTU") %>%
     otu_table(taxa_are_rows = TRUE)
 
+## read_tsv("its_otutab.txt") %>%
+##     dplyr::rename("OTU" = "#OTU ID") %>%
+##     pivot_longer(
+##         cols = starts_with("S"),
+##         names_to = "ID_sample",
+##         values_to = "Count") %>% 
+##     pivot_wider(
+##         id_cols = "ID_sample",
+##         names_from = "OTU",
+##         values_from = "Count")
+
 read_tsv("its_otutab.txt") %>%
     dplyr::rename("OTU" = "#OTU ID") %>%
     pivot_longer(
         cols = starts_with("S"),
         names_to = "ID_sample",
+        names_prefix = "S",
         values_to = "Count") %>% 
-    pivot_wider(
-        id_cols = "ID_sample",
-        names_from = "OTU",
-        values_from = "Count")
+    mutate(ID_sample = as.numeric(ID_sample)) %>%
+    left_join(
+        site_labels,
+        by = "ID_sample") %>%
+    filter(Rep == 1) %>% 
+    separate(Yaohui_labelling, into = c("YA", "USDS"), sep = "_") %>% 
+    unite(Name_USDS, Site_name, USDS, sep = "_") %>% 
+    group_by(Name_USDS) %>% 
+    summarise(Tot = sum(Count)) %>% 
+    write_csv("seq_depth_fungi.csv")
 
 GP_ITS <-
     phyloseq(
@@ -357,6 +423,15 @@ dev.off()
 ** DESeq2 analysis
 
 #+BEGIN_SRC R :session
+
+smp_matrix <-
+    phyloseq(
+        its_otu_tbl,
+        its_tax_tbl,
+        csa) %>%
+    psmelt %>%
+    select(c(2, 5:18)) %>%
+    unique
 
 its_tax_table <-
     its_tax_tbl %>%
@@ -508,14 +583,14 @@ adonis(
 
 adonis(
     ribo_data %>% select(-(1:15)) %>% as.matrix %>% decostand("pa")
-    ~ its_data$USDS,
-    strata = its_data$Site_name,
+    ~ ribo_data$USDS,
+    strata = ribo_data$Site_name,
     method = "bray")
  
 adonis(
     ribo_data %>% select(-(1:15)) %>% as.matrix
-    ~ its_data$USDS,
-    strata = its_data$Site_name,
+    ~ ribo_data$USDS,
+    strata = ribo_data$Site_name,
     method = "bray")
 
 #+END_SRC
@@ -564,8 +639,8 @@ taxonomy <-
     as_tibble(rownames="OTU")
 
 species <-
-    basplot$species
-    as_tibble(rownames="OTU")
+    basplot$species %>% 
+    as_tibble(rownames="OTU") %>% 
     mutate(dist=sqrt(CAP1^2 + CAP2^2)) %>%
     arrange(desc(dist)) %>%
     left_join(taxonomy) %>% 
