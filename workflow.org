@@ -231,6 +231,10 @@ ribo_otu_tbl <-
     data.frame(row.names = "OTU") %>%
     otu_table(taxa_are_rows = TRUE)
 
+read_tsv("bact_otutab.txt") %>%
+    dplyr::rename("OTU" = "#OTU ID") %>% 
+    filter(!(OTU %in% chloroplast_otus)) %>% 
+    write_tsv("bact_otutab_wo_chloroplasts.txt")
 
 read_tsv("bact_otutab.txt") %>%
     dplyr::rename("OTU" = "#OTU ID") %>%
@@ -353,17 +357,6 @@ its_otu_tbl <-
         values_from = "Count") %>% 
     data.frame(row.names = "OTU") %>%
     otu_table(taxa_are_rows = TRUE)
-
-## read_tsv("its_otutab.txt") %>%
-##     dplyr::rename("OTU" = "#OTU ID") %>%
-##     pivot_longer(
-##         cols = starts_with("S"),
-##         names_to = "ID_sample",
-##         values_to = "Count") %>% 
-##     pivot_wider(
-##         id_cols = "ID_sample",
-##         names_from = "OTU",
-##         values_from = "Count")
 
 read_tsv("its_otutab.txt") %>%
     dplyr::rename("OTU" = "#OTU ID") %>%
